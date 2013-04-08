@@ -1,3 +1,4 @@
+
 # Top-level filter (only include the following...)
 ^(?!(?:script|examples|lib|inc|t|xt|maint)/|(?:(?:Makefile|Build)\.PL|README|MANIFEST|Changes|META\.(?:yml|json))$)
 
@@ -28,3 +29,5 @@
 # Avoid patch remnants
 \.orig$
 \.rej$
+
+^t/dropbox-dir/

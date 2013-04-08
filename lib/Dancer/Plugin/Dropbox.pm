@@ -2,7 +2,11 @@ package Dancer::Plugin::Dropbox;
 
 use 5.010001;
 use strict;
-use warnings FATAL => 'all';
+use warnings;
+use Dancer ':syntax';
+use Dancer::Plugin;
+use File::Spec::Functions qw/catfile catdir splitdir/;
+use Dancer::Plugin::Dropbox::AutoIndex qw/autoindex/;
 
 =head1 NAME
 
@@ -28,26 +32,131 @@ Perhaps a little code snippet.
     my $foo = Dancer::Plugin::Dropbox->new();
     ...
 
+=cut
+
+sub dropbox_send_file {
+    my ($self, @args) = plugin_args(@_);
+    # Dancer::Logger::debug(to_dumper(\@args));
+
+    my $basedir = plugin_setting->{basedir} ||
+      catdir(config->{appdir}, "dropbox-datadir");
+
+    # preliminary checking
+    die "Only two arguments shall be passed to dropbox_send_file_for\n"
+      unless scalar(@args) == 2;
+    my ($user, $filepath) = @args;
+    unless ($user) {
+        status 404;
+        Dancer::Logger::warning("No user");
+        return;
+    }
+    my @path;
+    if (ref($filepath) eq 'ARRAY') {
+        @path = @$filepath;
+    }
+    elsif (ref($filepath) eq '') {
+        # it's a single piece, so use that
+        push @path, $filepath;
+    }
+    my $file = catfile($basedir, _get_sane_path($user, @path));
+    Dancer::Logger::debug("Trying to serve $file");
+    
+    # check if exists
+    unless (-e $file) {
+        status 404;
+        return;
+    }
+
+    # check if it's a file and send it
+    if (-f $file) {
+        return send_file($file, system_path => 1);
+    }
+
+    # is it a directory?
+    if (-d $file) {
+        # for now just return the html
+        my $listing = autoindex($file);
+        Dancer::Logger::debug(to_dumper($listing));
+        my $template = plugin_setting->{index_template};
+        my $layout = plugin_setting->{index_template_layout} || "main";
+        my $token = plugin_setting->{index_template_token}  || "listing";
+        if ($template) {
+            return template $template => {
+                                          $token => $listing
+                                         }, { layout => $layout };
+        }
+        else {
+            return _render_index($listing);
+        }
+        return to_yaml($listing);
+    }
+    # if it's not a dir, return 404
+    status 404;
+    return "";
+}
+
+
+sub _get_sane_path {
+    my @pathdirs = @_;
+    my @realdir;
+
+    # loop over the dirs and search ".."
+    foreach my $dir (@pathdirs) {
+        next if $dir =~ m!/\\!; # just to avoid bad names
+
+	if ($dir eq ".") {
+	    # do nothing
+	}
+
+	# the tricky case
+	elsif ($dir eq "..") {
+	    if (@realdir) {
+		pop @realdir;
+	    }
+	}
+
+	# we check with splitdir if the directory can be splat further
+	# with the hosting OS logic
+	elsif (splitdir($dir) == 1) {
+	    push @realdir, $dir;
+	}
+	else {
+	    # bad chunk, ignore
+            next;
+	}
+    }
+    return @realdir;
+}
+
+# if a template able to handle the arrayref with the listing, we just
+# provide a really simple one.
+sub _render_index {
+    my $listing = shift;
+    my @out = (qq{<!doctype html><head><title>Directory Listing</title></head><body><table><tr><th>Name</th><th>Last Modified</th><th>Size</th></tr>});
+    foreach my $f (@$listing) {
+        push @out, qq{<tr><td><a href="$f->{location}">$f->{name}</a></td><td>$f->{mod_time}</td><td>$f->{size}</td>};
+        if ($f->{error}) {
+            push @out, qq{<td>$f->{error}</td>};
+        }
+        push @out, "</tr>";
+    }
+    push @out, "</table></body></html>";
+    return join("", @out);
+}
+
+
+register dropbox_send_file => \&dropbox_send_file;
+
+
+register_plugin;
+
+
+
+
 =head1 EXPORT
 
 A list of functions that can be exported.  You can delete this section
 if you don't export anything, such as for a purely object-oriented module.
-
-=head1 SUBROUTINES/METHODS
-
-=head2 function1
-
-=cut
-
-sub function1 {
-}
-
-=head2 function2
-
-=cut
-
-sub function2 {
-}
 
 =head1 AUTHOR
 

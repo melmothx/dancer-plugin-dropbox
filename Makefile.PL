@@ -18,9 +18,13 @@ WriteMakefile(
         'Test::More' => 0,
     },
     PREREQ_PM => {
-        #'ABC'              => 1.6,
-        #'Foo::Bar::Module' => 5.0401,
-    },
+                  'Dancer' => 1.311,
+                  'Format::Human::Bytes' => 0,
+                  'File::Spec' => 0,
+                  'DateTime' => 0,
+                  'URI::Escape' => 0,
+                  'File::Slurp' => 0,
+                 },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'Dancer-Plugin-Dropbox-*' },
 );
