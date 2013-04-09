@@ -81,9 +81,6 @@ sub dropbox_send_file {
     my ($self, @args) = plugin_args(@_);
     # Dancer::Logger::debug(to_dumper(\@args));
 
-    my $basedir = plugin_setting->{basedir} ||
-      catdir(config->{appdir}, "dropbox-datadir");
-
     my ($user, $filepath, $template_tokens, $listing_params);
     # only one parameter and it's an hashref
     if (@args == 1 and (ref($args[0]) eq 'HASH')) {
@@ -99,25 +96,13 @@ sub dropbox_send_file {
     $template_tokens ||= {};
     $filepath        ||= '/';
     $listing_params  ||= {};
-    unless ($user && _check_root($user)) {
-        status 404;
-        Dancer::Logger::warning("No user");
-        return;
+
+    my $file = _dropbox_get_filename($user, $filepath);
+
+    unless ($file) {
+        send_error("Bad request", 403);
     }
 
-    my @path;
-    if (ref($filepath) eq 'ARRAY') {
-        @path = @$filepath;
-    }
-    elsif (ref($filepath) eq '') {
-        # it's a single piece, so use that
-        @path = split(/[\/\\]/, $filepath);
-    }
-    else {
-        die "Wrong usage! the second argument should be an arrayref or a string\n";
-    }
-
-    my $file = catfile($basedir, _get_sane_path($user, @path));
     Dancer::Logger::debug("Trying to serve $file");
     
     # check if exists
@@ -153,6 +138,85 @@ sub dropbox_send_file {
     return send_error("File not found", 404);
 }
 
+=head3 dropbox_upload_file($user, $filepath, $fileuploaded)
+
+This keyword manage the uploading of a file.
+
+The first argument is the dropbox user, used as root directory.
+
+The second argument is the desired path, a directory which must
+exists.
+
+The third argument is the L<Dancer::Request::Upload> object which you
+can get with C<upload("param_name")>.
+
+It returns 0 in case of success, or an error string.
+
+=cut
+
+sub dropbox_upload_file {
+    my ($self, $user, $filepath, $uploaded) = plugin_args(@_);
+    my $target = _dropbox_get_filename($user, $filepath);
+    unless ($target and -d $target) {
+        return "Not a directory"
+    }
+    return "no file passed" unless $uploaded;
+
+    my $basename = $uploaded->basename;
+    # we use _check_root to be sure it's a decent filename, with no \ or /
+    return "bad filename" unless _check_root($basename);
+
+    my $targetfile = catfile($target, $basename);
+    Dancer::Logger::info("copying the file to $targetfile");
+
+    unless ($uploaded->copy_to($targetfile)) {
+        return "Saving the file failed"
+    }
+    return 0
+}
+
+sub dropbox_create_directory {
+    my ($self, $user, $filepath, $dirname) = plugin_args(@_);
+    my $target = _dropbox_get_filename($user, $filepath);
+    unless ($target and -d $target) {
+        return "Not a directory"
+    }
+}
+
+sub _dropbox_get_filename {
+    my ($user, $filepath) = @_;
+
+    # if the filepath is not provided, use the root
+    $filepath ||= "/";
+    my $basedir = plugin_setting->{basedir} ||
+      catdir(config->{appdir}, "dropbox-datadir");
+
+    # if the app runs without a $basedir, die
+    die "$basedir doesn't exist or is not a directory\n" unless -d $basedir;
+
+    unless ($user && _check_root($user)) {
+        return undef;
+    }
+    # if the app required this path
+
+    # get the desired path
+    my @path;
+    if (ref($filepath) eq 'ARRAY') {
+        @path = @$filepath;
+    }
+    elsif (ref($filepath) eq '') {
+        # it's a single piece, so use that
+        @path = split(/[\/\\]/, $filepath);
+    }
+    else {
+        die "Wrong usage! the second argument should be an arrayref or a string\n";
+    }
+
+    my $file = catfile($basedir, _get_sane_path($user, @path));
+    return $file;
+}
+
+
 
 sub _get_sane_path {
     my @pathdirs = @_;
@@ -187,15 +251,16 @@ sub _get_sane_path {
 }
 
 # given that the username is the root directory, we want to be on the
-# safe side.
+# safe side. See if _get_sane_path returns exactly the argument passed.
+
 
 sub _check_root {
     my $username = shift;
     my ($root) = _get_sane_path($username);
-    if ($root ne $username) {
-        return 0
-    } else {
+    if ($root and $root eq $username) {
         return 1
+    } else {
+        return 0
     }
 }
 
@@ -219,7 +284,8 @@ sub _render_index {
 
 
 register dropbox_send_file => \&dropbox_send_file;
-
+register dropbox_upload_file => \&dropbox_upload_file;
+register dropbox_create_directory => \&dropbox_create_directory;
 
 register_plugin;
 
