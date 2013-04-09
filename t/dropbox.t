@@ -61,7 +61,7 @@ my $testfile = catfile($basedir, $username, "test.txt");
 write_file($testfile, "hello world!\n");
 
 # start testing
-plan tests => 29;
+plan tests => 32;
 
 response_status_is [ GET => "/dropbox/$username/test.txt" ], 200,
   "Found the test.txt for marco";
@@ -130,6 +130,15 @@ response_status_is
                                         }], 302, "post ok";
 
 ok(-f catfile($basedir, $username, "XSS", "blabla"), "file created");
+
+response_status_is [ GET => "/dropbox/$username/XSS/blabla" ], 200,
+  "file found";
+
+response_content_like [ GET => "/dropbox/$username/XSS/" ], qr{href="blabla"},
+  "file found";
+
+response_content_like [ GET => "/dropbox/$username/XSS" ], qr{href="blabla"},
+  "file found";
 
 
 

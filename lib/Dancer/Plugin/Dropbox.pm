@@ -150,7 +150,7 @@ exists.
 The third argument is the L<Dancer::Request::Upload> object which you
 can get with C<upload("param_name")>.
 
-It returns 0 in case of success, or an error string.
+It returns true in case of success, false otherwise.
 
 =cut
 
@@ -158,9 +158,10 @@ sub dropbox_upload_file {
     my ($self, $user, $filepath, $uploaded) = plugin_args(@_);
     my $target = _dropbox_get_filename($user, $filepath);
     unless ($target and -d $target) {
-        return "Not a directory"
+        Dancer::Logger::warning "$target is not a directory";
+        return;
     }
-    return "no file passed" unless $uploaded;
+    return unless $uploaded;
 
     my $basename = $uploaded->basename;
     Dancer::Logger::debug("Uploading $basename");
@@ -168,18 +169,35 @@ sub dropbox_upload_file {
     # we use _check_root to be sure it's a decent filename, with no \ or /
     unless (_check_root($basename)) {
         Dancer::Logger::warning("bad filename");
-        return "bad filename";    }
+        return;
+    }
 
     # find the target file
     my $targetfile = catfile($target, $basename);
     Dancer::Logger::info("copying the file to $targetfile");
 
-    # copy
-    unless ($uploaded->copy_to($targetfile)) {
-        return "Saving the file failed"
-    }
-    return 0
+    # copy and return the return value
+    return $uploaded->copy_to($targetfile)
 }
+
+=head3 dropbox_create_directory($user, $filepath, $dirname);
+
+The keyword creates a new directory on the top of an existing dropbox
+directory.
+
+The first argument is the user the directory belongs to in the dropbox
+application.
+
+The second argument is the path where the directory should be created.
+This is usually retrieved from the route against which the user posts
+the request. The directory must already exist.
+
+The third argument is the desired newname. It should constitute a
+single directory, so no directory separator is allowed.
+
+It returns true on success, false otherwise.
+
+=cut
 
 sub dropbox_create_directory {
     my ($self, $user, $filepath, $dirname) = plugin_args(@_);
@@ -195,6 +213,29 @@ sub dropbox_create_directory {
     my $dir_to_create = catdir($target, $dirname);
     return mkdir($dir_to_create);
 }
+
+
+=head3 dropbox_delete_file($user, $filepath, $filename);
+
+The keyword deletes a file or an empty directory belonging to an
+existing dropbox directory.
+
+The first argument is the dropbox user.
+
+The second argument is the parent directory of the target file. This
+is usually retrieved from the route against which the user posts the
+request.
+
+The third argument is the target to delete. No directory separator is
+allowed here.
+
+It returns true on success, false otherwise.
+
+Internally, it uses C<unlink> on files and C<rmdir> on directories.
+
+
+=cut
+
 
 sub dropbox_delete_file {
     my ($self, $user, $filepath, $filename) = plugin_args(@_);
