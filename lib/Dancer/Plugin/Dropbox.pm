@@ -120,7 +120,7 @@ sub dropbox_send_file {
         # for now just return the html
         Dancer::Logger::debug("Creating autoindex for $file");
         my $listing = autoindex($file, %$listing_params);
-        Dancer::Logger::debug(to_dumper($listing));
+        # Dancer::Logger::debug(to_dumper($listing));
         my $template = plugin_setting->{template};
         my $layout   = plugin_setting->{layout} || "main";
         my $token    = plugin_setting->{token}  || "listing";
@@ -163,12 +163,18 @@ sub dropbox_upload_file {
     return "no file passed" unless $uploaded;
 
     my $basename = $uploaded->basename;
-    # we use _check_root to be sure it's a decent filename, with no \ or /
-    return "bad filename" unless _check_root($basename);
+    Dancer::Logger::debug("Uploading $basename");
 
+    # we use _check_root to be sure it's a decent filename, with no \ or /
+    unless (_check_root($basename)) {
+        Dancer::Logger::warning("bad filename");
+        return "bad filename";    }
+
+    # find the target file
     my $targetfile = catfile($target, $basename);
     Dancer::Logger::info("copying the file to $targetfile");
 
+    # copy
     unless ($uploaded->copy_to($targetfile)) {
         return "Saving the file failed"
     }

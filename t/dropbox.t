@@ -6,6 +6,7 @@ use Test::More;
 use File::Spec::Functions qw/catdir catfile/;
 use File::Path qw/make_path/;
 use File::Slurp;
+use File::Basename qw/basename/;
 
 use Dancer ":tests";
 use Dancer::Plugin::Dropbox;
@@ -19,8 +20,6 @@ set plugins => {
                             basedir => $basedir
                            }
                };
-
-set logger => "console";
 
 
 # defines some routes
@@ -40,8 +39,9 @@ post '/dropbox/*/' => \&manage_uploads;
 
 sub manage_uploads {
     my ($user, $filepath) = splat;
-    if (my $uploaded = upload('file_upload')) {
-        dropbox_upload_file($user, $filepath, $uploaded);
+    if (my $uploaded = upload('upload_file')) {
+        warning dropbox_upload_file($user, $filepath, $uploaded);
+        
     }
     elsif (my $dirname = param("create_dir")) {
         dropbox_create_directory($user, $filepath, $dirname);
@@ -58,7 +58,7 @@ my $testfile = catfile($basedir, $username, "test.txt");
 write_file($testfile, "hello world!\n");
 
 # start testing
-plan tests => 6;
+plan tests => 9;
 
 response_status_is [ GET => "/dropbox/$username/test.txt" ], 200,
   "Found the test.txt for marco";
@@ -76,8 +76,36 @@ response_content_like [ GET => "/dropbox/$username/" ],
 response_status_is [ GET => "/dropbox/../../$username/test.txt" ], 403,
   "Username looks wrong";
 
-response_content_is [ GET => "/dropbox/../../$username/test.txt" ], "Bad username",
-  "Username looks wrong";
+my $data  = 'A test string that will pretend to be file contents.';
+my $upfilename = "../../../../../../../tmp/test<em><em>hello.ext";
+
+my $upfile_on_disk = catfile($basedir, $username, basename($upfilename));
+# diag "Uploading " . $upfile_on_disk;
+if (-f $upfile_on_disk) {
+    unlink $upfile_on_disk or die "Couldn't remove $upfile_on_disk";
+}
+
+my $nastyupload = dancer_response(POST => "/dropbox/$username/",
+				     {
+				      files => [{
+						 name => 'upload_file',
+						 filename => $upfilename, 
+						 data => $data,
+						}]
+				     });
+
+ok((-f $upfile_on_disk), "$upfile_on_disk created");
+my $content = read_file($upfile_on_disk);
+is ($content, $data, "File transferred ok");
+
+# set logger => "console";
+
+response_content_like [ GET => "/dropbox/$username/" ],
+  qr{href="test%3Cem%3E%3Cem%3Ehello\.ext">test%3Cem%3E%3Cem%3Ehello\.ext},
+  "index looks fine";
+
+
+response_status_is $nastyupload, 302, "Nasty upload successful but harmless";
 
 
 
