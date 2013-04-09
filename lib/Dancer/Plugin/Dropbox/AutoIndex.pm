@@ -14,7 +14,6 @@ use DateTime;
 use Format::Human::Bytes;
 use File::Spec;
 use URI::Escape;
-use Encode;
 
 =head2 autoindex ($directory, sort_field => "mod_time")
 
@@ -62,7 +61,7 @@ sub autoindex {
 		eval {
                     # this could fail if there are bytes > 255, so we
                     # encode it.
-		    $name = uri_escape(encode("utf-8", $name));
+		    $name = uri_escape_utf8($name);
 		};
 		next if $@;
 
