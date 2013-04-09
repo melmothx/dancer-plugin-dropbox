@@ -99,7 +99,7 @@ sub dropbox_send_file {
     $template_tokens ||= {};
     $filepath        ||= '/';
     $listing_params  ||= {};
-    unless ($user) {
+    unless ($user && _check_root($user)) {
         status 404;
         Dancer::Logger::warning("No user");
         return;
@@ -122,8 +122,7 @@ sub dropbox_send_file {
     
     # check if exists
     unless (-e $file) {
-        status 404;
-        return;
+        return send_error("File not found", 404);
     }
 
     # check if it's a file and send it
@@ -151,8 +150,7 @@ sub dropbox_send_file {
         }
     }
     # if it's not a dir, return 404
-    status 404;
-    return "";
+    return send_error("File not found", 404);
 }
 
 
@@ -187,6 +185,20 @@ sub _get_sane_path {
     }
     return @realdir;
 }
+
+# given that the username is the root directory, we want to be on the
+# safe side.
+
+sub _check_root {
+    my $username = shift;
+    my ($root) = _get_sane_path($username);
+    if ($root ne $username) {
+        return 0
+    } else {
+        return 1
+    }
+}
+
 
 # if a template able to handle the arrayref with the listing, we just
 # provide a really simple one.
