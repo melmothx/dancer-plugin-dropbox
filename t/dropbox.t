@@ -61,7 +61,7 @@ my $testfile = catfile($basedir, $username, "test.txt");
 write_file($testfile, "hello world!\n");
 
 # start testing
-plan tests => 9;
+plan tests => 29;
 
 response_status_is [ GET => "/dropbox/$username/test.txt" ], 200,
   "Found the test.txt for marco";
@@ -121,6 +121,19 @@ response_status_is
 ok(-d catdir($basedir, $username, "XSS"), "directory created");
 
 response_status_is
+  [ POST => "/dropbox/$username/XSS" => {
+                                         files => [{
+                                                    name => 'upload_file',
+                                                    filename => "blabla",
+                                                    data => $data,
+                                                   }]
+                                        }], 302, "post ok";
+
+ok(-f catfile($basedir, $username, "XSS", "blabla"), "file created");
+
+
+
+response_status_is
   [ POST => "/dropbox/$username/" => {
                                       body => {
                                                newdirname => "../XSS"
@@ -157,7 +170,29 @@ response_status_is
                                               }
                                      }], 302, "Response ok";
 
-ok(! -e catfile($basedir, $username, "XSS"), "directory deleted");
+ok(-e catdir($basedir, $username, "XSS"), "directory still there because not empty");
+
+response_status_is
+  [ POST => "/dropbox/$username/XSS/" => {
+                                      body => {
+                                                filedelete => "blabla"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(! -e catfile($basedir, $username, "XSS", "blabla"), "file deleted");
+
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                                filedelete => "XSS"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(! -e catdir($basedir, $username, "XSS"), "directory deleted");
+
+
+
 
 response_status_is
   [ POST => "/dropbox/$username/" => {
