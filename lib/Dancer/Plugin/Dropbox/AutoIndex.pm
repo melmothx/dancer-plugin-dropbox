@@ -14,8 +14,10 @@ use DateTime;
 use Format::Human::Bytes;
 use File::Spec;
 use URI::Escape;
+use Dancer ":syntax";
+use Encode;
 
-=head2 autoindex ($directory, sort_field => "mod_time")
+=head2 autoindex ($directory, sort_field => "name", fs_encoding => "utf-8")
 
 The autoindex function takes as argument a directory and an optional
 named sort_field parameter for sorting, and returns a arrayref with
@@ -23,7 +25,7 @@ hashrefs with the relevant file information:
 
         [
           {
-            'location' => '../',
+            'location' => './../',
             'mod_time' => '08-Apr-2013 12:58',
             'name' => '..',
             'size' => '-'
@@ -36,16 +38,26 @@ hashrefs with the relevant file information:
           }
         ];
 
+You may want to specify a C<sort_field> parameter to sort the listing
+(by default "name") and a file system encoding (by default "utf-8");
+
+
 =cut
 
 sub autoindex {
 	my ($directory, %params) = @_;
 	my ($name, @files, $st);
-        return [] unless -d $directory;
+    return [] unless -d $directory;
 	$params{sort_field} ||= 'name';
+    $params{fs_encoding}   ||= 'utf-8';
 		
 	opendir(AUTO, $directory);
 	while ($name = readdir(AUTO)) {
+
+        # we have to decode the raw bytes pulled out from readdir, so
+        # let's use a parameter.
+        $name = decode ($params{fs_encoding}, $name);
+
 		my (%file_info, $file_st, $epoch);
 
 		next if $name eq '.';
@@ -56,29 +68,23 @@ sub autoindex {
 			$file_info{mod_time} = DateTime->from_epoch(epoch => $file_st->mtime)->strftime('%d-%b-%Y %H:%M');
 		}
 		else {
-			$file_info{error} = $!;
+			$file_info{error} = "$directory, $name, $!";
+                        Dancer::Logger::warning $file_info{error};
+                        next;
 		}
-		eval {
-                    # this could fail if there are bytes > 255, so we
-                    # encode it.
-		    $name = uri_escape_utf8($name);
-		};
-		next if $@;
 
+        # encode it back and escape
+		$name = uri_escape_utf8($name);
 		$file_info{name} = $name;
-		
+
 		if (-d $file_st) {
-			$file_info{location} = "$name/";
+			$file_info{location} = "./$name/";
 			$file_info{size} = '-';
 		}
 		else {
 			$file_info{location} = $name;
 			$file_info{size} = Format::Human::Bytes::base2($file_st->size());
 		}
-
-		# escape character used for HTML anchors 
-		$file_info{location} =~ s/#/%23/g;
-		
 		push (@files, \%file_info);
 	}
 
@@ -87,3 +93,4 @@ sub autoindex {
 }
 
 1;
+

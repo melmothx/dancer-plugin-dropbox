@@ -34,6 +34,49 @@ Perhaps a little code snippet.
 
 =cut
 
+=head3 dropbox_send_file ($user, $filepath, \%template_tokens, \%listing_params)
+
+This keyword accepts a list of positional arguments or a single hash
+reference. If the given filename exists, it sends it to the client. If
+it's a directory, a directory listing is returned.
+
+The first argument is the dropbox user, which is also the subdirectory
+of the dropbox directory.
+
+The second argument is the path of the file, as a single string or as
+a arrayref, the same you could get from a Dancer's megasplat (C<**>).
+If not provided, it will return the root of the user.
+
+The third argument is an hashref with the template tokens for the
+directory listing. This will be used only if the path points to a
+directory and ignored otherwise. The configuration file should specify
+at least the template to use.
+
+  plugins:
+    Dropbox:
+      basedir: 'dropbox-data'
+      template: 'dropbox-listing'
+      token: index
+  
+
+The forth argument is an hashref for the autoindex function. See
+L<Dancer::Plugin::AutoIndex> for details.
+
+The directory listing will set the template token specified in the
+configuration file under C<token>.
+
+The alternate syntax using a hashref is the following:
+
+  dropbox_send_file {
+                     user => $username,
+                     filepath => $filepath,
+                     template_tokens => \%template_tokens,
+                     listing_params  => \%listing_params,
+                    };
+
+=cut
+
+
 sub dropbox_send_file {
     my ($self, @args) = plugin_args(@_);
     # Dancer::Logger::debug(to_dumper(\@args));
@@ -41,23 +84,39 @@ sub dropbox_send_file {
     my $basedir = plugin_setting->{basedir} ||
       catdir(config->{appdir}, "dropbox-datadir");
 
-    # preliminary checking
-    die "Only two arguments shall be passed to dropbox_send_file_for\n"
-      unless scalar(@args) == 2;
-    my ($user, $filepath) = @args;
+    my ($user, $filepath, $template_tokens, $listing_params);
+    # only one parameter and it's an hashref
+    if (@args == 1 and (ref($args[0]) eq 'HASH')) {
+        my $argsref = shift @args;
+        $user = $argsref->{user};
+        $filepath = $argsref->{filepath};
+        $template_tokens = $argsref->{template_tokens};
+        $listing_params = $argsref->{listing_params};
+    }
+    else {
+        ($user, $filepath, $template_tokens, $listing_params) = @args;
+    }
+    $template_tokens ||= {};
+    $filepath        ||= '/';
+    $listing_params  ||= {};
     unless ($user) {
         status 404;
         Dancer::Logger::warning("No user");
         return;
     }
+
     my @path;
     if (ref($filepath) eq 'ARRAY') {
         @path = @$filepath;
     }
     elsif (ref($filepath) eq '') {
         # it's a single piece, so use that
-        push @path, $filepath;
+        @path = split(/[\/\\]/, $filepath);
     }
+    else {
+        die "Wrong usage! the second argument should be an arrayref or a string\n";
+    }
+
     my $file = catfile($basedir, _get_sane_path($user, @path));
     Dancer::Logger::debug("Trying to serve $file");
     
@@ -75,20 +134,21 @@ sub dropbox_send_file {
     # is it a directory?
     if (-d $file) {
         # for now just return the html
-        my $listing = autoindex($file);
+        Dancer::Logger::debug("Creating autoindex for $file");
+        my $listing = autoindex($file, %$listing_params);
         Dancer::Logger::debug(to_dumper($listing));
-        my $template = plugin_setting->{index_template};
-        my $layout = plugin_setting->{index_template_layout} || "main";
-        my $token = plugin_setting->{index_template_token}  || "listing";
+        my $template = plugin_setting->{template};
+        my $layout   = plugin_setting->{layout} || "main";
+        my $token    = plugin_setting->{token}  || "listing";
         if ($template) {
             return template $template => {
-                                          $token => $listing
+                                          $token => $listing,
+                                          %$template_tokens,
                                          }, { layout => $layout };
         }
         else {
             return _render_index($listing);
         }
-        return to_yaml($listing);
     }
     # if it's not a dir, return 404
     status 404;
@@ -102,7 +162,7 @@ sub _get_sane_path {
 
     # loop over the dirs and search ".."
     foreach my $dir (@pathdirs) {
-        next if $dir =~ m!/\\!; # just to avoid bad names
+        next if $dir =~ m![\\/]!; # just to avoid bad names
 
 	if ($dir eq ".") {
 	    # do nothing
@@ -130,6 +190,7 @@ sub _get_sane_path {
 
 # if a template able to handle the arrayref with the listing, we just
 # provide a really simple one.
+
 sub _render_index {
     my $listing = shift;
     my @out = (qq{<!doctype html><head><title>Directory Listing</title></head><body><table><tr><th>Name</th><th>Last Modified</th><th>Size</th></tr>});
@@ -248,3 +309,8 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 =cut
 
 1; # End of Dancer::Plugin::Dropbox
+
+# Local Variables:
+# tab-width: 8
+# End:
+
