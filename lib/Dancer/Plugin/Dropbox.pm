@@ -184,9 +184,30 @@ sub dropbox_upload_file {
 sub dropbox_create_directory {
     my ($self, $user, $filepath, $dirname) = plugin_args(@_);
     my $target = _dropbox_get_filename($user, $filepath);
-    unless ($target and -d $target) {
-        return "Not a directory"
+
+    # the post must happen against a directory
+    return unless ($target and -d $target);
+
+    # we can't create a directory over an existing file
+    return if (-e $dirname);
+    return unless _check_root($dirname);
+    my $dir_to_create = catdir($target, $dirname);
+    return mkdir($dir_to_create);
+}
+
+sub dropbox_delete_file {
+    my ($self, $user, $filepath, $filename) = plugin_args(@_);
+    my $target = _dropbox_get_filename($user, $filepath);
+    return unless ($target and -e $target);
+    return unless _check_root($filename);
+    my $file_to_delete = catfile($target, $filename);
+    if (-f $file_to_delete) {
+        return unlink($file_to_delete);
     }
+    elsif (-d $file_to_delete) {
+        return rmdir($file_to_delete);
+    }
+    return
 }
 
 sub _dropbox_get_filename {
@@ -292,7 +313,7 @@ sub _render_index {
 register dropbox_send_file => \&dropbox_send_file;
 register dropbox_upload_file => \&dropbox_upload_file;
 register dropbox_create_directory => \&dropbox_create_directory;
-
+register dropbox_delete_file => \&dropbox_delete_file;
 register_plugin;
 
 
