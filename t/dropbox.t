@@ -36,7 +36,7 @@ get '/dropbox/*/**' => sub {
 };
 
 # create the files
-make_path $basedir;
+make_path catdir($basedir, $username);
 die "$basedir couldn't be created" unless -d $basedir;
 
 my $testfile = catfile($basedir, $username, "test.txt");
