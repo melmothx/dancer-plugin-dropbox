@@ -43,8 +43,11 @@ sub manage_uploads {
         warning dropbox_upload_file($user, $filepath, $uploaded);
         
     }
-    elsif (my $dirname = param("create_dir")) {
+    elsif (my $dirname = param("newdirname")) {
         dropbox_create_directory($user, $filepath, $dirname);
+    }
+    elsif (my $deletion = param("filedelete")) {
+        dropbox_delete_file($user, $filepath, $deletion);
     }
     return redirect request->path;
 }
@@ -98,14 +101,81 @@ ok((-f $upfile_on_disk), "$upfile_on_disk created");
 my $content = read_file($upfile_on_disk);
 is ($content, $data, "File transferred ok");
 
-# set logger => "console";
-
 response_content_like [ GET => "/dropbox/$username/" ],
   qr{href="test%3Cem%3E%3Cem%3Ehello\.ext">test%3Cem%3E%3Cem%3Ehello\.ext},
   "index looks fine";
 
-
 response_status_is $nastyupload, 302, "Nasty upload successful but harmless";
+
+# set logger => "console";
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                               newdirname => "XSS"
+                                              }
+                                     }], 302, "Response ok";
+
+
+
+ok(-d catdir($basedir, $username, "XSS"), "directory created");
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                               newdirname => "../XSS"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(! -d catdir($basedir, "XSS"), "No traversal for new directories");
+
+write_file(catfile(t => "testfile"), "hello\n");
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                                filedelete => "../../testfile"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(-f catfile(t => "testfile"), "testfile is still there");
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                                filedelete => "%2e%2e%2ftestfile"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(-f catfile(t => "testfile"), "testfile is still there");
+unlink catfile(t => "testfile"); # don't leave stray files
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                                filedelete => "XSS"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(! -e catfile($basedir, $username, "XSS"), "directory deleted");
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                                filedelete => "test<em><em>hello.ext"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(! -e catfile($basedir, $username, "test<em><em>hello.ext"), "file deleted");
+
+response_status_is
+  [ POST => "/dropbox/$username/" => {
+                                      body => {
+                                                filedelete => "test.txt"
+                                              }
+                                     }], 302, "Response ok";
+
+ok(! -e catfile($basedir, $username, "test.txt"), "file deleted");
 
 
 

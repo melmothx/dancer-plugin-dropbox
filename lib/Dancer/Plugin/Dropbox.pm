@@ -191,6 +191,7 @@ sub dropbox_create_directory {
     # we can't create a directory over an existing file
     return if (-e $dirname);
     return unless _check_root($dirname);
+    Dancer::Logger::info("Trying to create $dirname in $target");
     my $dir_to_create = catdir($target, $dirname);
     return mkdir($dir_to_create);
 }
@@ -200,6 +201,7 @@ sub dropbox_delete_file {
     my $target = _dropbox_get_filename($user, $filepath);
     return unless ($target and -e $target);
     return unless _check_root($filename);
+    Dancer::Logger::info("Requested deletion:" . catfile($target, $filename));
     my $file_to_delete = catfile($target, $filename);
     if (-f $file_to_delete) {
         return unlink($file_to_delete);
