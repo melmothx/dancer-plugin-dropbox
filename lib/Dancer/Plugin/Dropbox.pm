@@ -267,6 +267,13 @@ sub _dropbox_get_filename {
     unless ($user && _check_root($user)) {
         return undef;
     }
+
+    my $user_root = catdir($basedir, _get_sane_path($user));
+    unless (-d $user_root) {
+        Dancer::Logger::info("Autocreating root dir for $user: $user_root");
+        mkdir $user_root or die "Couldn't create $user_root $!";
+    }
+
     # if the app required this path
 
     # get the desired path
