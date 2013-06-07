@@ -385,7 +385,7 @@ sub _get_sane_path {
 
     # loop over the dirs and search ".."
     foreach my $dir (@pathdirs) {
-        next if $dir =~ m![\\/]!; # just to avoid bad names
+        next if $dir =~ m![\\/\0]!; # just to avoid bad names
 
 	if ($dir eq ".") {
 	    # do nothing

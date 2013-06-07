@@ -61,7 +61,7 @@ my $testfile = catfile($basedir, $username, "test.txt");
 write_file($testfile, "hello world!\n");
 
 # start testing
-plan tests => 34;
+plan tests => 37;
 
 response_status_is [ GET => "/dropbox/$username/test.txt" ], 200,
   "Found the test.txt for marco";
@@ -76,9 +76,25 @@ response_content_like [ GET => "/dropbox/$username/" ],
   qr{>\.\.<.*test\.txt}s,
   "Found the listing for marco";
 
+response_content_is [ GET => "/dropbox/$username/\0/\0/test" ],
+  "Bad Request",
+  "Null dirs skipped";
+
+response_status_is [ GET => "/dropbox/$username/\0/\0/test" ],
+  "400",
+  "Nulls get 400 (managed by Dancer";
+
+
+
 response_content_like [ GET => "/dropbox/$username/../../../../../../../../../../../../../../../etc/passwd" ],
   qr{Error 404}s,
   "Got the error string";
+
+response_content_like [ GET => "/dropbox/$username/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd" ],
+  qr{Error 404}s,
+  "Got the error string";
+
+
 
 
 response_content_like [ GET => "/dropbox/../../$username/test.txt" ],
@@ -149,8 +165,6 @@ response_content_like [ GET => "/dropbox/$username/XSS/" ], qr{href="blabla"},
 
 response_content_like [ GET => "/dropbox/$username/XSS" ], qr{href="blabla"},
   "file found";
-
-
 
 response_status_is
   [ POST => "/dropbox/$username/" => {
