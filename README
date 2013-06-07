@@ -2,7 +2,10 @@ NAME
     Dancer::Plugin::Dropbox - Dancer plugin for a dropbox-like applications.
 
 VERSION
-    Version 0.01
+    Version 0.00001
+
+    This release appears to work, but it is in an early stage of development
+    and testing. You have been warned.
 
 SYNOPSIS
     In the config:
@@ -16,70 +19,33 @@ SYNOPSIS
   
     In your route:
 
-      package MyApp::Routes::Dropbox;
-      use Dancer ':syntax';
-      use Dancer::Plugin::Dropbox;
-      use URI::Escape;
-      use Encode;
-  
-      get '/dropbox/' => sub {
-          my $user = session("user");
-          return redirect '/dropbox/' . $user . '/';
+      get '/dropbox/*/' => sub {
+          my ($user) = splat;
+          return dropbox_send_file($user, "/");
       };
   
-      any ['get', 'post'] => qr{/dropbox/([^/\\]+)(/(.*))?} => sub {
-          my ($user, $fullpath, $path) = splat;
-          my %params = params();
-
-          # auth section
-          my $realuser = session("user");
-          unless ($user eq $realuser) {
-              send_error("Permission denied", 403);
-          }
+      get '/dropbox/*/**' => sub {
+          my ($user, $filepath) = splat;
+          return dropbox_send_file($user, $filepath);
+      };
   
-          # dispatching
-          unless (request->is_post) {
-              my $tokens = {
-                            directory => $fullpath
-                           };
-              return dropbox_send_file($user, $fullpath, $tokens);
+      post '/dropbox/*/**' => \&manage_uploads;
+      post '/dropbox/*/' => \&manage_uploads;
+  
+      sub manage_uploads {
+          my ($user, $filepath) = splat;
+          if (my $uploaded = upload('upload_file')) {
+              warning dropbox_upload_file($user, $filepath, $uploaded);
+          
           }
-          if (my $fileup = upload('upload_file')) {
-              if (dropbox_upload_file($user, $fullpath, $fileup)) {
-                 info "$fullpath successfully uploaded";
-              };
+          elsif (my $dirname = param("newdirname")) {
+              dropbox_create_directory($user, $filepath, $dirname);
           }
-          elsif (my $newdir = param "newdirname") {
-              info "creating $newdir";
-              if (dropbox_create_directory($user, $fullpath, $newdir)) {
-                  info "$newdir ok";
-              } else {
-                  info "$newdir couldn't be created";
-              }
-          }
-          elsif (my $deletion = param "filedelete") {
-              my @files;
-              if (ref($deletion) eq 'ARRAY') {
-                  @files = @$deletion;
-              }
-              elsif (ref($deletion) eq '') {
-                  push @files, $deletion;
-              }
-              else {
-                  # we should never reach this point
-                  return redirect request->path;
-              }
-              my @deleted;
-              foreach my $file (@files) {
-                  $file = decode("utf-8", uri_unescape($file));
-                  info "Removing $file";
-                  push @deleted, dropbox_delete_file($user, $fullpath, $file)
-              }
-              info "Deleted " . join(" ", @deleted);
-              # here we could dump the deleted filenames in the session for display
+          elsif (my $deletion = param("filedelete")) {
+              dropbox_delete_file($user, $filepath, $deletion);
           }
           return redirect request->path;
-      };
+      }
   
   Configuration
     The configuration keys are as follows:
