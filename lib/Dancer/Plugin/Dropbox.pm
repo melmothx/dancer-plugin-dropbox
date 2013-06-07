@@ -10,7 +10,7 @@ use Dancer::Plugin::Dropbox::AutoIndex qw/autoindex/;
 
 =head1 NAME
 
-Dancer::Plugin::Dropbox - The great new Dancer::Plugin::Dropbox!
+Dancer::Plugin::Dropbox - Dancer plugin for a dropbox-like applications.
 
 =head1 VERSION
 
@@ -23,16 +23,122 @@ our $VERSION = '0.01';
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
+In the config:
 
-Perhaps a little code snippet.
+  plugins:
+    Dropbox:
+      basedir: 'dropbox-data'
+      template: 'dropbox-listing'
+      token: index
+      autocreate_root: 1
+  
+In your route:
 
-    use Dancer::Plugin::Dropbox;
+  package MyApp::Routes::Dropbox;
+  use Dancer ':syntax';
+  use Dancer::Plugin::Dropbox;
+  use URI::Escape;
+  use Encode;
+  
+  get '/dropbox/' => sub {
+      my $user = session("user");
+      return redirect '/dropbox/' . $user . '/';
+  };
+  
+  any ['get', 'post'] => qr{/dropbox/([^/\\]+)(/(.*))?} => sub {
+      my ($user, $fullpath, $path) = splat;
+      my %params = params();
 
-    my $foo = Dancer::Plugin::Dropbox->new();
-    ...
+      # auth section
+      my $realuser = session("user");
+      unless ($user eq $realuser) {
+          send_error("Permission denied", 403);
+      }
+  
+      # dispatching
+      unless (request->is_post) {
+          my $tokens = {
+                        directory => $fullpath
+                       };
+          return dropbox_send_file($user, $fullpath, $tokens);
+      }
+      if (my $fileup = upload('upload_file')) {
+          if (dropbox_upload_file($user, $fullpath, $fileup)) {
+             info "$fullpath successfully uploaded";
+          };
+      }
+      elsif (my $newdir = param "newdirname") {
+          info "creating $newdir";
+          if (dropbox_create_directory($user, $fullpath, $newdir)) {
+              info "$newdir ok";
+          } else {
+              info "$newdir couldn't be created";
+          }
+      }
+      elsif (my $deletion = param "filedelete") {
+          my @files;
+          if (ref($deletion) eq 'ARRAY') {
+              @files = @$deletion;
+          }
+          elsif (ref($deletion) eq '') {
+              push @files, $deletion;
+          }
+          else {
+              # we should never reach this point
+              return redirect request->path;
+          }
+          my @deleted;
+          foreach my $file (@files) {
+              $file = decode("utf-8", uri_unescape($file));
+              info "Removing $file";
+              push @deleted, dropbox_delete_file($user, $fullpath, $file)
+          }
+          info "Deleted " . join(" ", @deleted);
+          # here we could dump the deleted filenames in the session for display
+      }
+      return redirect request->path;
+  };
+  
+=head2 Configuration
 
-=cut
+The configuration keys are as follows:
+
+=over 4
+
+=item basedir
+
+The directory which will be the root of the dropbox users. The
+directory must already exist. Defaults to "dropbox-datadir" in the
+application directory.
+
+=item template
+
+The template to use. If not present, a minimal embedded template will
+be used.
+
+=item layout
+
+The layout to use (defaults to C<main>).
+
+=item token
+
+The token of your template to use (defaults to C<listing>) for the
+directory listing.
+
+=item autocreate_root
+
+If set to a true value, the root for the each user will be created on
+the first "GET" request, e.g. C<dropbox-data/marco@test.tld/>
+
+Please note that the dropbox file will be left in a subdirectory of
+the basedir named with the username, so if you permit usernames with
+"/" or "\" or ".." inside the name, the user will never reach its
+files, effectively cutting it out.
+
+=back
+
+
+=head2 Exported keywords
 
 =head3 dropbox_send_file ($user, $filepath, \%template_tokens, \%listing_params)
 
@@ -59,7 +165,7 @@ at least the template to use.
       token: index
   
 
-The forth argument is an hashref for the autoindex function. See
+The fourth argument is an hashref for the autoindex function. See
 L<Dancer::Plugin::AutoIndex> for details.
 
 The directory listing will set the template token specified in the
@@ -96,6 +202,11 @@ sub dropbox_send_file {
     $template_tokens ||= {};
     $filepath        ||= '/';
     $listing_params  ||= {};
+
+    # be sure to have the root directory created. $user is sane, as
+    # it's been passed by the route with authentication.
+
+    
 
     my $file = _dropbox_get_filename($user, $filepath);
 
@@ -192,7 +303,7 @@ The second argument is the path where the directory should be created.
 This is usually retrieved from the route against which the user posts
 the request. The directory must already exist.
 
-The third argument is the desired newname. It should constitute a
+The third argument is the desired new name. It should constitute a
 single directory, so no directory separator is allowed.
 
 It returns true on success, false otherwise.
@@ -373,14 +484,6 @@ register dropbox_create_directory => \&dropbox_create_directory;
 register dropbox_delete_file => \&dropbox_delete_file;
 register_plugin;
 
-
-
-
-=head1 EXPORT
-
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
-
 =head1 AUTHOR
 
 Marco Pessotto, C<< <melmothx at gmail.com> >>
@@ -390,9 +493,6 @@ Marco Pessotto, C<< <melmothx at gmail.com> >>
 Please report any bugs or feature requests to C<bug-dancer-plugin-dropbox at rt.cpan.org>, or through
 the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Dancer-Plugin-Dropbox>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
-
-
-
 
 =head1 SUPPORT
 
@@ -426,6 +526,8 @@ L<http://search.cpan.org/dist/Dancer-Plugin-Dropbox/>
 
 =head1 ACKNOWLEDGEMENTS
 
+Thanks to Stefan Hornburg (Racke) C<racke@linuxia.de> for the initial
+code, ideas and support.
 
 =head1 LICENSE AND COPYRIGHT
 
