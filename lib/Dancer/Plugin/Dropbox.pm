@@ -14,11 +14,15 @@ Dancer::Plugin::Dropbox - Dancer plugin for a dropbox-like applications.
 
 =head1 VERSION
 
-Version 0.01
+Version 0.00001
+
+B<This release appears to work, but it is in an early stage of
+development and testing>. You have been warned.
+
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.00001';
 
 
 =head1 SYNOPSIS
