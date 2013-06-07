@@ -61,7 +61,7 @@ my $testfile = catfile($basedir, $username, "test.txt");
 write_file($testfile, "hello world!\n");
 
 # start testing
-plan tests => 32;
+plan tests => 34;
 
 response_status_is [ GET => "/dropbox/$username/test.txt" ], 200,
   "Found the test.txt for marco";
@@ -76,8 +76,18 @@ response_content_like [ GET => "/dropbox/$username/" ],
   qr{>\.\.<.*test\.txt}s,
   "Found the listing for marco";
 
+response_content_like [ GET => "/dropbox/$username/../../../../../../../../../../../../../../../etc/passwd" ],
+  qr{Error 404}s,
+  "Got the error string";
+
+
+response_content_like [ GET => "/dropbox/../../$username/test.txt" ],
+  qr{Error 403}, "Got the error string";
+
 response_status_is [ GET => "/dropbox/../../$username/test.txt" ], 403,
   "Username looks wrong";
+
+
 
 my $data  = 'A test string that will pretend to be file contents.';
 my $upfilename = "../../../../../../../tmp/test<em><em>hello.ext";
