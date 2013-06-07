@@ -211,7 +211,7 @@ sub dropbox_create_directory {
     return unless _check_root($dirname);
     Dancer::Logger::info("Trying to create $dirname in $target");
     my $dir_to_create = catdir($target, $dirname);
-    return mkdir($dir_to_create);
+    return mkdir($dir_to_create, 0700);
 }
 
 
@@ -270,8 +270,15 @@ sub _dropbox_get_filename {
 
     my $user_root = catdir($basedir, _get_sane_path($user));
     unless (-d $user_root) {
-        Dancer::Logger::info("Autocreating root dir for $user: $user_root");
-        mkdir $user_root or die "Couldn't create $user_root $!";
+        if (plugin_setting->{autocreate_root}) {
+            Dancer::Logger::info("Autocreating root dir for $user: " .
+                                 "$user_root");
+            mkdir($user_root, 0700) or die "Couldn't create $user_root $!";
+        }
+        else {
+            Dancer::Logger::warning("Directory for $user does not exist and " .
+                                    "settings prevent its creation.");
+        }
     }
 
     # if the app required this path
