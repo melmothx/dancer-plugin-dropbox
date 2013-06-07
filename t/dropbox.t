@@ -34,6 +34,16 @@ get '/dropbox/*/**' => sub {
     return dropbox_send_file($user, $filepath);
 };
 
+post '/dropbox/ajax' => sub {
+    my $user = $username; # usually here you want some kind of auth
+    my $dir = param("dir");
+    my $structure = dropbox_ajax_listing($user, $dir);
+    if ($structure) {
+        return to_json($structure);
+    }
+    send_error("Not found", 404);
+};
+
 post '/dropbox/*/**' => \&manage_uploads;
 post '/dropbox/*/' => \&manage_uploads;
 
@@ -61,7 +71,7 @@ my $testfile = catfile($basedir, $username, "test.txt");
 write_file($testfile, "hello world!\n");
 
 # start testing
-plan tests => 37;
+plan tests => 40;
 
 response_status_is [ GET => "/dropbox/$username/test.txt" ], 200,
   "Found the test.txt for marco";
@@ -157,6 +167,16 @@ response_status_is
 
 ok(-f catfile($basedir, $username, "XSS", "blabla"), "file created");
 
+
+
+response_content_like [ POST => "/dropbox/ajax" => {
+                                                  body => {
+                                                           dir => "XSS",
+                                                          }
+                                                 }],
+  qr{location.*blabla}, "Ajax request appears ok";
+
+
 response_status_is [ GET => "/dropbox/$username/XSS/blabla" ], 200,
   "file found";
 
@@ -245,6 +265,19 @@ response_status_is
 
 ok(! -e catfile($basedir, $username, "test.txt"), "file deleted");
 
+
+response_status_is [ POST => "/dropbox/ajax" => {
+                                                  body => {
+                                                           dir => ".",
+                                                          }
+                                                 }], 200, "ajax ok";
+
+
+response_status_is [ POST => "/dropbox/ajax" => {
+                                                  body => {
+                                                           dir => "aksdfjklas",
+                                                          }
+                                                 }], 404, "ajax ok";
 
 
 

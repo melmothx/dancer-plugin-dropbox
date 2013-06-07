@@ -14,7 +14,7 @@ Dancer::Plugin::Dropbox - Dancer plugin for a dropbox-like applications.
 
 =head1 VERSION
 
-Version 0.00001
+Version 0.00002
 
 B<This release appears to work, but it is in an early stage of
 development and testing>. You have been warned.
@@ -22,7 +22,7 @@ development and testing>. You have been warned.
 
 =cut
 
-our $VERSION = '0.00001';
+our $VERSION = '0.00002';
 
 
 =head1 SYNOPSIS
@@ -148,7 +148,27 @@ The alternate syntax using a hashref is the following:
                      listing_params  => \%listing_params,
                     };
 
+=head3 dropbox_ajax_listing ( $user, $path )
+
+Return a hashref with a single key, the real system path file, and
+with the value set to the L<Dancer::Plugin::Dropbox::AutoIndex>
+arrayref for the directory $path and user $user.
+
+Retur , or undef if it doesn't exist or it is not a directory.
+
 =cut
+
+sub dropbox_ajax_listing {
+    my ($self, @args) = plugin_args(@_);
+    my ($user, $filepath) = @args;
+    if (!defined $filepath) {
+        $filepath = "/";
+    }
+    my $file = _dropbox_get_filename($user, $filepath);
+    return unless $file;
+    return unless -d $file;
+    return { $file => autoindex($file) };
+}
 
 
 sub dropbox_send_file {
@@ -445,6 +465,7 @@ sub _render_index {
 
 
 register dropbox_send_file => \&dropbox_send_file;
+register dropbox_ajax_listing => \&dropbox_ajax_listing;
 register dropbox_upload_file => \&dropbox_upload_file;
 register dropbox_create_directory => \&dropbox_create_directory;
 register dropbox_delete_file => \&dropbox_delete_file;
