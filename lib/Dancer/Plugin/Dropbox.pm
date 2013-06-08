@@ -10,7 +10,7 @@ use Dancer::Plugin::Dropbox::AutoIndex qw/autoindex/;
 
 =head1 NAME
 
-Dancer::Plugin::Dropbox - Dancer plugin for a dropbox-like applications.
+Dancer::Plugin::Dropbox - Dancer plugin for dropbox-like applications.
 
 =head1 VERSION
 
