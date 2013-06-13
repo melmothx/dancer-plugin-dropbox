@@ -27,4 +27,9 @@ WriteMakefile(
                  },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'Dancer-Plugin-Dropbox-*' },
+    META_MERGE => {
+        resources => {
+            repository => 'https://github.com/melmothx/dancer-plugin-dropbox'
+        },
+    },
 );
