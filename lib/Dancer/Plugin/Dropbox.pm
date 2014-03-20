@@ -408,7 +408,7 @@ sub dropbox_create_directory {
     return unless _check_root($dirname);
     Dancer::Logger::info("Trying to create $dirname in $target");
     my $dir_to_create = catdir($target, $dirname);
-    return mkdir($dir_to_create, 0700);
+    return mkdir($dir_to_create, 0770);
 }
 
 
