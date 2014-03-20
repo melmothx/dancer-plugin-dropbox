@@ -14,7 +14,7 @@ Dancer::Plugin::Dropbox - Dancer plugin for dropbox-like applications.
 
 =head1 VERSION
 
-Version 0.00002
+Version 0.00003
 
 B<This release appears to work, but it is in an early stage of
 development and testing>. You have been warned.
@@ -22,7 +22,7 @@ development and testing>. You have been warned.
 
 =cut
 
-our $VERSION = '0.00002';
+our $VERSION = '0.00003';
 
 
 =head1 SYNOPSIS
@@ -184,30 +184,46 @@ sub dropbox_send_file {
     my ($self, @args) = plugin_args(@_);
     # Dancer::Logger::debug(to_dumper(\@args));
 
+    my $details = {
+                   user => '',
+                   filepath => '/',
+                   template_tokens => {},
+                   listing_params  => {},
+                  };
+
     my ($user, $filepath, $template_tokens, $listing_params);
     # only one parameter and it's an hashref
     if (@args == 1 and (ref($args[0]) eq 'HASH')) {
         my $argsref = shift @args;
-        $user = $argsref->{user};
-        $filepath = $argsref->{filepath};
-        $template_tokens = $argsref->{template_tokens};
-        $listing_params = $argsref->{listing_params};
+        foreach my $k (qw/user filepath template_tokens listing_params/) {
+            if (my $v = $argsref->{$k}) {
+                $details->{$k} = $v;
+            }
+        }
     }
     else {
-        ($user, $filepath, $template_tokens, $listing_params) = @args;
+        foreach my $k (qw/user filepath template_tokens listing_params/) {
+            if (@args) {
+                $details->{$k} = shift @args;
+            }
+        }
     }
-    $template_tokens ||= {};
-    $filepath        ||= '/';
-    $listing_params  ||= {};
 
-    # be sure to have the root directory created. $user is sane, as
-    # it's been passed by the route with authentication.
+    # compose the real path name
+    $details->{file} = _dropbox_get_filename($details->{user},
+                                             $details->{filepath});
 
-    my $file = _dropbox_get_filename($user, $filepath);
+    # pass the hashref to the hook for manipulation
+    execute_hook dropbox_find_file => $details;
+
+    my $file = $details->{file};
 
     unless ($file) {
+        warning "No file was set";
         send_error("Bad request", 403);
     }
+
+    debug "Trying to serve $file";
 
     Dancer::Logger::debug("Trying to serve $file");
     
@@ -225,7 +241,7 @@ sub dropbox_send_file {
     if (-d $file) {
         # for now just return the html
         Dancer::Logger::debug("Creating autoindex for $file");
-        my $listing = autoindex($file, %$listing_params);
+        my $listing = autoindex($file, %{ $details->{listing_params} });
         # Dancer::Logger::debug(to_dumper($listing));
         my $template = plugin_setting->{template};
         my $layout   = plugin_setting->{layout} || "main";
@@ -233,7 +249,7 @@ sub dropbox_send_file {
         if ($template) {
             return template $template => {
                                           $token => $listing,
-                                          %$template_tokens,
+                                          %{ $details->{template_tokens} },
                                          }, { layout => $layout };
         }
         else {
@@ -470,12 +486,15 @@ sub _render_index {
     return join("", @out);
 }
 
+register_hook 'dropbox_find_file';
+
 register dropbox_root => \&dropbox_root;
 register dropbox_send_file => \&dropbox_send_file;
 register dropbox_ajax_listing => \&dropbox_ajax_listing;
 register dropbox_upload_file => \&dropbox_upload_file;
 register dropbox_create_directory => \&dropbox_create_directory;
 register dropbox_delete_file => \&dropbox_delete_file;
+
 register_plugin;
 
 =head1 AUTHOR

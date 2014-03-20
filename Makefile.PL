@@ -24,6 +24,7 @@ WriteMakefile(
                   'DateTime' => 0,
                   'URI::Escape' => 0,
                   'File::Slurp' => 0,
+                  'JSON' => 0,
                  },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'Dancer-Plugin-Dropbox-*' },
