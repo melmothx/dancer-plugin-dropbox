@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 20;
+use Test::More tests => 21;
 use File::Spec::Functions qw/catdir catfile/;
 use File::Path qw/make_path/;
 use File::Slurp;
@@ -136,6 +136,7 @@ hook dropbox_find_file => sub {
     # change the file to a directory
     # diag to_dumper($details);
     ok (!exists $details->{file}, "file token doesn't exist any more");
+    is $details->{operation}, 'send_file';
 };
 
 hook dropbox_file_access_denied => sub {

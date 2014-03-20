@@ -67,7 +67,7 @@ In your route:
   }
   
   
-=head2 Configuration
+=head1 Configuration
 
 The configuration keys are as follows:
 
@@ -106,14 +106,14 @@ files, effectively cutting it out.
 =back
 
 
-=head2 Exported keywords
+=head1 Exported keywords
 
-=head3 dropbox_root
+=head2 dropbox_root
 
 The root directory where served files reside. It can be set with the
 C<basedir> configuration key and defaults to C<dropbox-datadir>.
 
-=head3 dropbox_send_file ($user, $filepath, \%template_tokens, \%listing_params)
+=head2 dropbox_send_file ($user, $filepath, \%template_tokens, \%listing_params)
 
 This keyword accepts a list of positional arguments or a single hash
 reference. If the given filename exists, it sends it to the client. If
@@ -153,13 +153,23 @@ The alternate syntax using a hashref is the following:
                      listing_params  => \%listing_params,
                     };
 
-=head3 dropbox_ajax_listing ( $user, $path )
+It calls the hook C<dropbox_find_file> where you can manipulate the path.
+
+If the file can't be accessed, it calls the hook
+C<dropbox_file_access_denied> (bad names, or the previous hook removed
+the C<file> key. If the file can't be found, it calls the hook
+C<dropbox_file_not_found>.
+
+=head2 dropbox_ajax_listing ( $user, $path )
 
 Return a hashref with a single key, the real system path file, and
 with the value set to the L<Dancer::Plugin::Dropbox::AutoIndex>
 arrayref for the directory $path and user $user.
 
 Retur , or undef if it doesn't exist or it is not a directory.
+
+It calls the hook C<dropbox_find_file> before creating the structure,
+so you can manipulate the C<file> path if needed.
 
 =cut
 
@@ -170,10 +180,19 @@ sub dropbox_ajax_listing {
         $filepath = "/";
     }
     my $file = _dropbox_get_filename($user, $filepath);
-    return unless $file;
-    return unless -d $file;
+    my $details = {
+                   operation => 'ajax_listing',
+                   user => $user,
+                   filepath => $filepath,
+                   file => $file,
+                  };
+    execute_hook dropbox_find_file => $details;
+
+    $file = $details->{file};
+    return unless ($file and -d $file);
     return { $file => autoindex($file) };
 }
+
 
 sub dropbox_root {
     return plugin_setting->{basedir} || catdir(config->{appdir},
@@ -186,6 +205,7 @@ sub dropbox_send_file {
 
     my $details = {
                    user => '',
+                   operation => 'send_file',
                    filepath => '/',
                    template_tokens => {},
                    listing_params  => {},
@@ -289,7 +309,7 @@ sub _error_handler {
 }
 
 
-=head3 dropbox_upload_file($user, $filepath, $fileuploaded)
+=head2 dropbox_upload_file($user, $filepath, $fileuploaded)
 
 This keyword manage the uploading of a file.
 
@@ -303,11 +323,24 @@ can get with C<upload("param_name")>.
 
 It returns true in case of success, false otherwise.
 
+It calls the hook C<dropbox_find_file> to find the target destination.
+
 =cut
 
 sub dropbox_upload_file {
     my ($self, $user, $filepath, $uploaded) = plugin_args(@_);
     my $target = _dropbox_get_filename($user, $filepath);
+
+    my $details = {
+                   user => $user,
+                   operation => 'upload_file',
+                   filepath => $filepath,
+                   file => $target,
+                  };
+
+    execute_hook dropbox_find_file => $details;
+    $target = $details->{file};
+
     unless ($target and -d $target) {
         Dancer::Logger::warning "$target is not a directory";
         return;
@@ -331,7 +364,7 @@ sub dropbox_upload_file {
     return $uploaded->copy_to($targetfile)
 }
 
-=head3 dropbox_create_directory($user, $filepath, $dirname);
+=head2 dropbox_create_directory($user, $filepath, $dirname);
 
 The keyword creates a new directory on the top of an existing dropbox
 directory.
@@ -348,11 +381,24 @@ single directory, so no directory separator is allowed.
 
 It returns true on success, false otherwise.
 
+It calls the hook C<dropbox_find_file> to find the parent directory of
+the target directory.
+
 =cut
 
 sub dropbox_create_directory {
     my ($self, $user, $filepath, $dirname) = plugin_args(@_);
     my $target = _dropbox_get_filename($user, $filepath);
+
+    my $details = {
+                   user => $user,
+                   operation => 'create_directory',
+                   filepath => $filepath,
+                   file => $target,
+                  };
+
+    execute_hook dropbox_find_file => $details;
+    $target = $details->{file};
 
     # the post must happen against a directory
     return unless ($target and -d $target);
@@ -366,7 +412,7 @@ sub dropbox_create_directory {
 }
 
 
-=head3 dropbox_delete_file($user, $filepath, $filename);
+=head2 dropbox_delete_file($user, $filepath, $filename);
 
 The keyword deletes a file or an empty directory belonging to an
 existing dropbox directory.
@@ -384,6 +430,8 @@ It returns true on success, false otherwise.
 
 Internally, it uses C<unlink> on files and C<rmdir> on directories.
 
+It calls the hook C<dropbox_find_file> to find the target file or
+directory.
 
 =cut
 
@@ -391,6 +439,17 @@ Internally, it uses C<unlink> on files and C<rmdir> on directories.
 sub dropbox_delete_file {
     my ($self, $user, $filepath, $filename) = plugin_args(@_);
     my $target = _dropbox_get_filename($user, $filepath);
+
+    my $details = {
+                   user => $user,
+                   operation => 'delete_file',
+                   filepath => $filepath,
+                   file => $target,
+                  };
+
+    execute_hook dropbox_find_file => $details;
+    $target = $details->{file};
+
     return unless ($target and -e $target);
     return unless _check_root($filename);
     Dancer::Logger::info("Requested deletion:" . catfile($target, $filename));
@@ -518,6 +577,38 @@ sub _render_index {
 register_hook 'dropbox_find_file';
 register_hook 'dropbox_file_not_found';
 register_hook 'dropbox_file_access_denied';
+
+=head1 HOOKS
+
+Hooks provide a way for the app to modify the path as seen by the
+plugin, and to change the behaviour of the plugin.
+
+=head2 dropbox_find_file
+
+This hook is called for every operation. It's guaranteed to have a
+C<file> key, which is the target file or directory, and a C<operation>
+key, to get a minimum of introspection. The operation name is the
+exported keyword without the C<dropbox_> prefix.
+
+It's not called for C<dropbox_root>.
+
+Deleting the C<file> key has the effect of deny access to the file for
+every operation (which in turn, if inside C<dropbox_send_file>, will
+call the C<dropbox_file_access_denied> hook).
+
+=head2 dropbox_file_not_found
+
+Called by C<dropbox_send_file> when it gets a valid path, but no file
+could be found. Here you can set C<template>, C<layout>, and
+C<template_tokens> for the view rendering which is going to be called
+by dropbox_send_file. If not template is set, just the error is sent
+to the user.
+
+=head2 dropbox_file_access_denied
+
+Exactly like C<dropbox_file_not_found>, but for access denied.
+
+=cut
 
 register dropbox_root => \&dropbox_root;
 register dropbox_send_file => \&dropbox_send_file;

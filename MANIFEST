@@ -7,7 +7,10 @@ README
 t/00-load.t
 t/boilerplate.t
 t/dropbox.t
+t/hooks.t
 t/keywords.t
 t/manifest.t
 t/pod-coverage.t
 t/pod.t
+t/views/denied.tt
+t/views/not_found.tt

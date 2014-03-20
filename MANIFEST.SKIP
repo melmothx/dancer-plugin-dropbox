@@ -31,3 +31,4 @@
 \.rej$
 
 ^t/dropbox-dir/
+^t/dropbox-hooks/
