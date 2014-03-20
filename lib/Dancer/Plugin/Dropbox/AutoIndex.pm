@@ -66,6 +66,7 @@ sub autoindex {
 		if ($file_st = stat(File::Spec->catfile($directory, $name))) {
 			$epoch = $file_st->mtime();
 			$file_info{mod_time} = DateTime->from_epoch(epoch => $file_st->mtime)->strftime('%d-%b-%Y %H:%M');
+            $file_info{error} = '';
 		}
 		else {
 			$file_info{error} = "$directory, $name, $!";
