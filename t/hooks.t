@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 14;
+use Test::More tests => 20;
 use File::Spec::Functions qw/catdir catfile/;
 use File::Path qw/make_path/;
 use File::Slurp;
@@ -20,6 +20,11 @@ set plugins => {
                             basedir => $basedir,
                            }
                };
+
+set views => catdir(t => 'views');
+set log => 'debug';
+set logger => 'capture';
+set template => 'simple';
 
 get '/dropbox/*/' => sub {
     my ($user) = splat;
@@ -86,6 +91,31 @@ response_status_is $res, 200,
 
 response_content_like $res, qr/href="test\.txt/, "With the new hook we get content listing";
 
+
+hook dropbox_find_file => sub {
+    my $details = shift;
+    my $file = $details->{file};
+    diag "This is an hook changing to something that does not exist";
+    # change the file to a directory
+    $details->{file} = catdir($basedir, $username, 'lkasdjfasdf');
+};
+
+diag "Testing the 404 hook, changing the filepath to something that doesn't exist";
+
+hook dropbox_file_not_found => sub {
+    my $details = shift;
+    ok $details->{file},
+      "Token $details->{file} exists but it's not found";
+    $details->{template} = 'not_found';
+    $details->{template_tokens}->{filepath} = $details->{filepath}->[0];
+};
+
+$res = dancer_response(GET => "/dropbox/$username/test.txt");
+
+response_status_is $res, 404, "hook modify request to something not found!";
+response_content_like $res, qr/My shiny template test\.txt/, "Template rendered";
+
+
 hook dropbox_find_file => sub {
     my $details = shift;
     diag "This is the third hook (deny access)";
@@ -102,13 +132,29 @@ response_status_is $res, 403,
 
 hook dropbox_find_file => sub {
     my $details = shift;
-    diag "This is the forth hook (deny access)";
+    diag "This is the forth hook (deny access checking)";
     # change the file to a directory
-    diag to_dumper($details);
-    ok (!exists $details->{file});
+    # diag to_dumper($details);
+    ok (!exists $details->{file}, "file token doesn't exist any more");
 };
+
+hook dropbox_file_access_denied => sub {
+    my $details = shift;
+    $details->{template} = 'denied';
+    $details->{template_tokens}->{message} = 'Access denied by app, hook executed';
+};
+
+read_logs;
 
 $res = dancer_response(GET => "/dropbox/$username/test.txt");
 
 response_status_is $res, 403,
-  "Access denied to test.txt via hook";
+  "Access denied to test.txt via hook" or diag to_dumper(read_logs);
+
+
+
+response_content_like $res,
+  qr/In denied template: Access denied by app, hook executed/,
+  "denied template rendered";
+
+

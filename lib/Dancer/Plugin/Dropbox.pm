@@ -218,18 +218,23 @@ sub dropbox_send_file {
 
     my $file = $details->{file};
 
+    # if we don't find a file, it means the access was denied.
     unless ($file) {
-        warning "No file was set";
-        send_error("Bad request", 403);
+        debug "file not set or deleted by app for " . to_dumper($details);
+        # so pass the details to the dropbox_file_access_denied hook,
+        # where the app can set the template and the tokens.
+        execute_hook dropbox_file_access_denied => $details;
+
+        return _error_handler(403 => $details);
     }
 
-    debug "Trying to serve $file";
-
-    Dancer::Logger::debug("Trying to serve $file");
+    debug("Trying to serve $file");
     
     # check if exists
-    unless (-e $file) {
-        return send_error("File not found", 404);
+    unless (-e $file and (-f $file or -d $file)) {
+        info "file $file not found!";
+        execute_hook dropbox_file_not_found => $details;
+        return _error_handler(404 => $details);
     }
 
     # check if it's a file and send it
@@ -256,9 +261,33 @@ sub dropbox_send_file {
             return _render_index($listing);
         }
     }
-    # if it's not a dir, return 404
+
+    # if it's not a dir, return 404. Shouldn't be reached, anyway. Not
+    # a file nor a directory, something is really off ("trying to
+    # access a socket or a device?
     return send_error("File not found", 404);
 }
+
+sub _error_handler {
+    my ($status, $details) = @_;
+    die "Wrong usage" unless $status;
+    my %msgs = (
+                403 => 'Access denied',
+                404 => 'File not found',
+               );
+    die "Wrong usage" unless $msgs{$status};
+
+    # if a template was set, render that, otherwise just send a 403
+    if (my $template = $details->{template}) {
+        status $status;
+        my $layout = { layout => $details->{layout} || 'main' };
+        return template $template, $details->{template_tokens}, $layout;
+    }
+    else {
+        return send_error($msgs{$status}, $status);
+    }
+}
+
 
 =head3 dropbox_upload_file($user, $filepath, $fileuploaded)
 
@@ -487,6 +516,8 @@ sub _render_index {
 }
 
 register_hook 'dropbox_find_file';
+register_hook 'dropbox_file_not_found';
+register_hook 'dropbox_file_access_denied';
 
 register dropbox_root => \&dropbox_root;
 register dropbox_send_file => \&dropbox_send_file;
