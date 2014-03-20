@@ -108,6 +108,11 @@ files, effectively cutting it out.
 
 =head2 Exported keywords
 
+=head3 dropbox_root
+
+The root directory where served files reside. It can be set with the
+C<basedir> configuration key and defaults to C<dropbox-datadir>.
+
 =head3 dropbox_send_file ($user, $filepath, \%template_tokens, \%listing_params)
 
 This keyword accepts a list of positional arguments or a single hash
@@ -170,6 +175,10 @@ sub dropbox_ajax_listing {
     return { $file => autoindex($file) };
 }
 
+sub dropbox_root {
+    return plugin_setting->{basedir} || catdir(config->{appdir},
+                                               "dropbox-datadir");
+}
 
 sub dropbox_send_file {
     my ($self, @args) = plugin_args(@_);
@@ -355,9 +364,7 @@ sub _dropbox_get_filename {
 
     # if the filepath is not provided, use the root
     $filepath ||= "/";
-    my $basedir = plugin_setting->{basedir} ||
-      catdir(config->{appdir}, "dropbox-datadir");
-
+    my $basedir = dropbox_root;
     # if the app runs without a $basedir, die
     die "$basedir doesn't exist or is not a directory\n" unless -d $basedir;
 
@@ -463,7 +470,7 @@ sub _render_index {
     return join("", @out);
 }
 
-
+register dropbox_root => \&dropbox_root;
 register dropbox_send_file => \&dropbox_send_file;
 register dropbox_ajax_listing => \&dropbox_ajax_listing;
 register dropbox_upload_file => \&dropbox_upload_file;

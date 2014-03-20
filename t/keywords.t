@@ -8,7 +8,7 @@ use File::Basename qw/basename/;
 use Dancer ":tests";
 use Dancer::Plugin::Dropbox;
 
-plan tests => 1;
+plan tests => 3;
 
 my $basedir = catdir(t => "dropbox-dir");
 
@@ -26,5 +26,11 @@ set plugins => {
 
 ok(!dropbox_delete_file("test", "/", "hello"));
 
+is dropbox_root, $basedir;
+
+set plugins => { Dropbox => {} };
+
+is dropbox_root, catdir(config->{appdir}, 'dropbox-datadir');
+print dropbox_root;
 
 
