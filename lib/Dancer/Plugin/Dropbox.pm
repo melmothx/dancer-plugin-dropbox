@@ -140,6 +140,9 @@ files, effectively cutting it out.
 
 =head1 Exported keywords
 
+Please keep in mind that the behaviour can be modified with the hooks
+explained in the next section, and which we reference here.
+
 =head2 dropbox_root
 
 The root directory where served files reside. It can be set with the
@@ -183,20 +186,10 @@ The alternate syntax using a hashref is the following:
                      listing_params  => \%listing_params,
                     };
 
-It calls the hook C<dropbox_find_file> where you can manipulate the path.
-
-If the file can't be accessed, it calls the hook
-C<dropbox_file_access_denied> (bad names, or the previous hook removed
-the C<file> key. If the file can't be found, it calls the hook
-C<dropbox_file_not_found>.
-
 The file listing parameters is stored in the token C<file_listing>.
 Before sending it to the template, the hook
 C<dropbox_on_directory_view> is called, where the template tokens can
 be manipulated.
-
-
-
 
 =head2 dropbox_ajax_listing ( $user, $path )
 
@@ -204,10 +197,14 @@ Return a hashref with a single key, the real system path file, and
 with the value set to the L<Dancer::Plugin::Dropbox::AutoIndex>
 arrayref for the directory $path and user $user.
 
-Retur , or undef if it doesn't exist or it is not a directory.
+The keyword returns that structure, or undef if it doesn't exist or it
+is not a directory.
 
 It calls the hook C<dropbox_find_file> before creating the structure,
 so you can manipulate the C<file> path if needed.
+
+No other hook is called, and no template is rendered. You get back
+only a data structure.
 
 =cut
 
@@ -372,10 +369,11 @@ exists.
 The third argument is the L<Dancer::Request::Upload> object which you
 can get with C<upload("param_name")>.
 
-It returns true in case of success, false otherwise.
+It returns true in case of success, false otherwise, unless the hooks
+set a C<redirect>, C<status> or C<template> (see below).
 
-It calls the hook C<dropbox_find_file> to find the target destination.
-The L<Dancer::Upload> object is stored in the key C<uploaded_file>
+The L<Dancer::Upload> object is stored in the key C<uploaded_file> in
+the hash reference passed to the hooks.
 
 =cut
 
@@ -447,10 +445,8 @@ the request. The directory must already exist.
 The third argument is the desired new name. It should constitute a
 single directory, so no directory separator is allowed.
 
-It returns true on success, false otherwise.
-
-It calls the hook C<dropbox_find_file> to find the parent directory of
-the target directory.
+It returns true on success, false otherwise, unless the hooks set a
+C<redirect>, C<status> or C<template> (see below).
 
 =cut
 
@@ -518,7 +514,8 @@ request.
 The third argument is the target to delete. No directory separator is
 allowed here.
 
-It returns true on success, false otherwise.
+It returns true on success, false otherwise, unless the hooks set a
+C<redirect>, C<status> or C<template> (see below).
 
 Internally, it uses C<unlink> on files and C<rmdir> on directories.
 
@@ -709,7 +706,38 @@ register_hook 'dropbox_on_create_directory_failure';
 =head1 HOOKS
 
 Hooks provide a way for the app to modify the path as seen by the
-plugin, and to change the behaviour of the plugin.
+plugin, and to change the behaviour of return value.
+
+Example:
+
+  hook dropbox_on_upload_file_success {
+    my $stash = shift;
+    my $basename = $stash->{uploaded_file}->basename;
+    my $destination = $stash->{file};
+    my $mail = session->{user} . "uploaded $basename to $destination";
+    # send the mail
+    email { ... }
+    # and redirect to the same path, with a status message
+    session info => "$basename uploaded!";
+    $stash->{redirect} = request->path;
+  }
+  
+  get '/dropbox/*/' => sub {
+    my ($user) = splat;
+    # validate the user
+  
+    return dropbox_send_file($user, '/');
+  }
+  
+  post '/dropbox/*/' => sub {
+    my ($user) = splat;
+  
+    # check if the user is legit and match the session or if he can
+    # access the user's root
+    if (my $uploaded = upload('upload_file')) {
+       return dropbox_upload_file($user, '/'
+    }
+  }
 
 =head2 dropbox_find_file
 
@@ -724,20 +752,95 @@ Deleting the C<file> key has the effect of deny access to the file for
 every operation (which in turn, if inside C<dropbox_send_file>, will
 call the C<dropbox_file_access_denied> hook).
 
-=head2 dropbox_file_not_found
+=head2 operation specific hooks
+
+The following hooks are provided:
+
+=over 4
+
+=item dropbox_file_not_found
 
 Called by C<dropbox_send_file> when it gets a valid path, but no file
-could be found. Here you can set C<template>, C<layout>, and
-C<template_tokens> for the view rendering which is going to be called
-by dropbox_send_file. If not template is set, just the error is sent
-to the user.
+could be found.
 
-However, if the key C<redirect> is present with a value, the template
-is ignored and a redirect is issued instead.
+=item dropbox_file_access_denied
 
-=head2 dropbox_file_access_denied
+When access is deny in C<dropbox_send_file>
 
-Exactly like C<dropbox_file_not_found>, but for access denied.
+=item dropbox_on_directory_view
+
+Before trying to render the directory listing template (when
+C<dropbox_send_file> is going to send a directory).
+
+=item dropbox_on_upload_file_success
+
+Called when C<dropbox_upload_file> is successful
+
+=item dropbox_on_upload_file_failure
+
+Called when C<dropbox_upload_file> fails. You can retrieve the error
+looking at the C<errors> key.
+
+=item dropbox_on_delete_file_success
+
+Called when C<dropbox_delete_file> is successful
+
+=item dropbox_on_delete_file_failure
+
+Called when C<dropbox_delete_file> fails. You can retrieve the error
+looking at the C<errors> key.
+
+=item dropbox_on_create_directory_success
+
+Called when C<dropbox_create_directory> is successful
+
+=item dropbox_on_create_directory_failure
+
+Called when C<dropbox_create_directory> fails. You can retrieve the error
+looking at the C<errors> key.
+
+=back
+
+The hooks receive a hash reference as the only argument. Manipulating
+it has the following behavior:
+
+=over 4
+
+=item redirect
+
+If this key is set, a redirect will be issued, pointing to its value.
+Everything above is ignored.
+
+=item status
+
+If this key is set, the status of the response will be set accordingly.
+
+=item template
+
+The template to use (not relevant if C<dropbox_send_file> is going to
+send a file) to render the action.
+
+If set, the template will be rendered.
+
+=item template_tokens
+
+The hash reference with the tokens passed to the template, where
+tokens can be inspected and manipulated. Ignored if C<template> is not
+set.
+
+=item layout
+
+The layout to use for the template. Defaults to main. Setting this to
+C<undef> will produce a template without layout.
+
+=item status_message
+
+If neither C<redirect> nor C<template> are not set, but the status is
+403 or 404, an error is sent via C<send_error>, using the key
+C<status_message> and defaulting to C<Access denied> and C<File not
+found> if no C<status_message> is provided.
+
+=back
 
 =cut
 
