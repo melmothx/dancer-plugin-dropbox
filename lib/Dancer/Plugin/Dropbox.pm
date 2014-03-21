@@ -553,7 +553,7 @@ sub _dropbox_get_filename {
         if (plugin_setting->{autocreate_root}) {
             Dancer::Logger::info("Autocreating root dir for $user: " .
                                  "$user_root");
-            mkdir($user_root, 0700) or die "Couldn't create $user_root $!";
+            mkdir($user_root, 0770) or die "Couldn't create $user_root $!";
         }
         else {
             Dancer::Logger::warning("Directory for $user does not exist and " .
