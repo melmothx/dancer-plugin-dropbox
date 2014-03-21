@@ -344,7 +344,10 @@ sub _finalize {
 
     # if a template is set, render it
     if (my $template = $details->{template}) {
-        my $layout = { layout => $details->{layout} || 'main' };
+        my $layout = { layout => 'main' };
+        if (exists $details->{layout}) {
+            $layout->{layout} = $details->{layout};
+        }
         return template $template, $details->{template_tokens}, $layout;
     }
     elsif ($status && $msgs{$status}) {
