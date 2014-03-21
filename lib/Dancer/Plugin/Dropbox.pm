@@ -243,9 +243,9 @@ sub dropbox_send_file {
         debug "file not set or deleted by app for " . to_dumper($details);
         # so pass the details to the dropbox_file_access_denied hook,
         # where the app can set the template and the tokens.
+        $details->{status} = 403;
         execute_hook dropbox_file_access_denied => $details;
-
-        return _error_handler(403 => $details);
+        return _finalize($details);
     }
 
     debug("Trying to serve $file");
@@ -253,8 +253,9 @@ sub dropbox_send_file {
     # check if exists
     unless (-e $file and (-f $file or -d $file)) {
         info "file $file not found!";
+        $details->{status} = 404;
         execute_hook dropbox_file_not_found => $details;
-        return _error_handler(404 => $details);
+        return _finalize($details);
     }
 
     # check if it's a file and send it
@@ -263,51 +264,56 @@ sub dropbox_send_file {
     }
 
     # is it a directory?
+    my $listing;
     if (-d $file) {
-        # for now just return the html
-        Dancer::Logger::debug("Creating autoindex for $file");
-        my $listing = autoindex($file, %{ $details->{listing_params} });
-        # Dancer::Logger::debug(to_dumper($listing));
-        my $template = plugin_setting->{template};
-        my $layout   = plugin_setting->{layout} || "main";
-        my $token    = plugin_setting->{token}  || "listing";
-        if ($template) {
-            return template $template => {
-                                          $token => $listing,
-                                          %{ $details->{template_tokens} },
-                                         }, { layout => $layout };
-        }
-        else {
-            return _render_index($listing);
-        }
-    }
+        $listing = autoindex($file, %{ $details->{listing_params} });
 
-    # if it's not a dir, return 404. Shouldn't be reached, anyway. Not
-    # a file nor a directory, something is really off ("trying to
-    # access a socket or a device?
-    return send_error("File not found", 404);
+        $details->{template} ||= plugin_setting->{template};
+        $details->{layout}   ||= plugin_setting->{layout} || "main";
+
+        # add the listing to the template tokens
+        my $token = plugin_setting->{token}  || "listing";
+        $details->{template_tokens}->{$token} = $listing;
+    }
+    else {
+        $details->{status} = 404;
+    }
+    return _finalize($details, _render_index($listing));
 }
 
-sub _error_handler {
-    my ($status, $details) = @_;
-    die "Wrong usage" unless $status;
+sub _finalize {
+    my ($details, $exit_value) = @_;
+    die "Wrong usage" unless $details;
     my %msgs = (
                 403 => 'Access denied',
                 404 => 'File not found',
                );
-    die "Wrong usage" unless $msgs{$status};
 
-    # if a template was set, render that, otherwise just send a 403
-    if (my $template = $details->{template}) {
+    # if a redirect is set, do that
+    if (my $redirect = $details->{redirect}) {
+        return redirect $redirect;
+    }
+
+    my $status = $details->{status};
+    # if status is set, set it
+    if ($status) {
         status $status;
+    }
+
+    # if a template is set, render it
+    if (my $template = $details->{template}) {
         my $layout = { layout => $details->{layout} || 'main' };
         return template $template, $details->{template_tokens}, $layout;
     }
+    elsif ($status && $msgs{$status}) {
+        my $msg = $details->{status_message} || $msgs{$status};
+        return send_error($msg, $status);
+    }
+    # nothing to do, the app doesn't want a template rendering
     else {
-        return send_error($msgs{$status}, $status);
+        return $exit_value;
     }
 }
-
 
 =head2 dropbox_upload_file($user, $filepath, $fileuploaded)
 
@@ -324,6 +330,7 @@ can get with C<upload("param_name")>.
 It returns true in case of success, false otherwise.
 
 It calls the hook C<dropbox_find_file> to find the target destination.
+The L<Dancer::Upload> object is stored in the key C<uploaded_file>
 
 =cut
 
@@ -336,33 +343,49 @@ sub dropbox_upload_file {
                    operation => 'upload_file',
                    filepath => $filepath,
                    file => $target,
+                   uploaded_file => $uploaded,
                   };
 
     execute_hook dropbox_find_file => $details;
     $target = $details->{file};
 
-    unless ($target and -d $target) {
-        Dancer::Logger::warning "$target is not a directory";
-        return;
+    my $error;
+    if (!$target) {
+        $error = "Target directory not provided";
     }
-    return unless $uploaded;
-
-    my $basename = $uploaded->basename;
-    Dancer::Logger::debug("Uploading $basename");
-
+    elsif (! -d $target) {
+        $error = "$target is not a directory";
+    }
+    elsif (! $uploaded) {
+        $error = "No upload provided";
+    }
     # we use _check_root to be sure it's a decent filename, with no \ or /
-    unless (_check_root($basename)) {
-        Dancer::Logger::warning("bad filename");
-        return;
+    elsif (! _check_root($uploaded->basename)) {
+        $error = "Bad filename provided";
     }
 
-    # find the target file
-    my $targetfile = catfile($target, $basename);
-    Dancer::Logger::info("copying the file to $targetfile");
-
+    my $exit_value;
+    if ($error) {
+        $details->{errors} = $error;
+        $details->{status} = 403;
+        execute_hook dropbox_on_upload_file_failure => $details;
+    }
+    else {
+        my $basename = $uploaded->basename;
+        my $targetfile = catfile($target, $basename);
+        $exit_value = $uploaded->copy_to($targetfile);
+        if ($exit_value) {
+            execute_hook dropbox_on_upload_file_success => $details;
+        }
+        else {
+            $details->{errors} = "Failed to copy $basename to target directory";
+            execute_hook dropbox_on_upload_file_failure => $details;
+        }
+    }       
     # copy and return the return value
-    return $uploaded->copy_to($targetfile)
+    return _finalize($details, $exit_value);
 }
+
 
 =head2 dropbox_create_directory($user, $filepath, $dirname);
 
@@ -395,20 +418,44 @@ sub dropbox_create_directory {
                    operation => 'create_directory',
                    filepath => $filepath,
                    file => $target,
+                   
                   };
 
     execute_hook dropbox_find_file => $details;
     $target = $details->{file};
 
     # the post must happen against a directory
-    return unless ($target and -d $target);
+    my $error;
+    if (!$target) {
+        $error = "No target directory provided";
+    }
+    elsif (! -d $target) {
+        $error = "$target is not a directory";
+    }
+    elsif (-e $dirname) {
+        $error = "$target exists";
+    }
+    elsif (! _check_root($dirname)) {
+        $error = "Bad target name $dirname";
+    }
 
-    # we can't create a directory over an existing file
-    return if (-e $dirname);
-    return unless _check_root($dirname);
-    Dancer::Logger::info("Trying to create $dirname in $target");
-    my $dir_to_create = catdir($target, $dirname);
-    return mkdir($dir_to_create, 0770);
+    my $exit_value;
+    if ($error) {
+        $details->{errors} = $error;
+        execute_hook dropbox_on_create_directory_failure => $details;
+    }
+    else {
+        my $dir_to_create = catdir($target, $dirname);
+        my $exit_value = mkdir($dir_to_create, 0770);
+        if ($exit_value) {
+            execute_hook dropbox_on_create_directory_success => $details;
+        }
+        else {
+            $details->{errors} = "Couldn't create $dir_to_create $!";
+            execute_hook dropbox_on_create_directory_failure => $details;
+        }
+    }
+    return _finalize($details, $exit_value);
 }
 
 
@@ -450,18 +497,43 @@ sub dropbox_delete_file {
     execute_hook dropbox_find_file => $details;
     $target = $details->{file};
 
-    return unless ($target and -e $target);
-    return unless _check_root($filename);
-    Dancer::Logger::info("Requested deletion:" . catfile($target, $filename));
+    my $error;
+    if (!$target) {
+        $error = "No target provided";
+    }
+    elsif (! -d $target) {
+        $error = "Target does not exists";
+    }
+    elsif (! _check_root($filename)) {
+        $error = "Bad filename";
+    }
+
+    my $exit_value;
     my $file_to_delete = catfile($target, $filename);
-    if (-f $file_to_delete) {
-        return unlink($file_to_delete);
+
+    if ($error) {
+        $details->{errors} = $error;
+        execute_hook dropbox_on_create_directory_failure => $details;
     }
-    elsif (-d $file_to_delete) {
-        return rmdir($file_to_delete);
+    else {
+        if (-f $file_to_delete) {
+            $exit_value = unlink($file_to_delete);
+        }
+        elsif (-d $file_to_delete) {
+            $exit_value = rmdir($file_to_delete);
+        }
+        if ($exit_value) {
+            execute_hook dropbox_on_delete_file_success => $details;
+        }
+        else {
+            $details->{errors} = "Couldn't delete $file_to_delete $!";
+            execute_hook dropbox_on_delete_file_failure => $details;
+        }
     }
-    return
+    return _finalize($details, $exit_value);
 }
+
+
 
 sub _dropbox_get_filename {
     my ($user, $filepath) = @_;
@@ -562,6 +634,7 @@ sub _check_root {
 
 sub _render_index {
     my $listing = shift;
+    return unless $listing;
     my @out = (qq{<!doctype html><head><title>Directory Listing</title></head><body><table><tr><th>Name</th><th>Last Modified</th><th>Size</th></tr>});
     foreach my $f (@$listing) {
         push @out, qq{<tr><td><a href="$f->{location}">$f->{name}</a></td><td>$f->{mod_time}</td><td>$f->{size}</td>};
@@ -577,6 +650,15 @@ sub _render_index {
 register_hook 'dropbox_find_file';
 register_hook 'dropbox_file_not_found';
 register_hook 'dropbox_file_access_denied';
+
+register_hook 'dropbox_on_upload_file_success';
+register_hook 'dropbox_on_upload_file_failure';
+
+register_hook 'dropbox_on_delete_file_success';
+register_hook 'dropbox_on_delete_file_failure';
+
+register_hook 'dropbox_on_create_directory_success';
+register_hook 'dropbox_on_create_directory_failure';
 
 =head1 HOOKS
 
@@ -603,6 +685,9 @@ could be found. Here you can set C<template>, C<layout>, and
 C<template_tokens> for the view rendering which is going to be called
 by dropbox_send_file. If not template is set, just the error is sent
 to the user.
+
+However, if the key C<redirect> is present with a value, the template
+is ignored and a redirect is issued instead.
 
 =head2 dropbox_file_access_denied
 

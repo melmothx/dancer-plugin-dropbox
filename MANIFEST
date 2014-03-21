@@ -9,8 +9,10 @@ t/boilerplate.t
 t/dropbox.t
 t/hooks.t
 t/keywords.t
+t/lib/MyApp.pm
 t/manifest.t
 t/pod-coverage.t
 t/pod.t
+t/redirect-hooks.t
 t/views/denied.tt
 t/views/not_found.tt
