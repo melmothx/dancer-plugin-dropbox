@@ -1,0 +1,9 @@
+<specification>
+  <list name="files" iterator="file_listing">
+    <param name="link" field="location" target="href"/>
+    <param name="name" class="link"/>
+    <param name="mod_time" class="date"/>
+    <param name="size" class="size"/>
+    <param name="error" class="error"/>
+  </list>
+</specification>

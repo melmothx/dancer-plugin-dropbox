@@ -81,17 +81,50 @@ application directory.
 
 =item template
 
-The template to use. If not present, a minimal embedded template will
-be used.
+The template to use to render the directory listing. If not present or
+not set in a hook, an exception is thrown. The file listing structure
+is stored into the C<file_listing> key. You can modify the tokens
+passed and the template itself at runtime using the
+C<dropbox_on_directory_view> view.
+
+An example template (using L<Template::Flute>) could be the following:
+
+=over 4
+
+=item specification
+
+  <specification>
+    <list name="files" iterator="file_listing">
+      <param name="link" field="location" target="href"/>
+      <param name="name" class="link"/>
+      <param name="mod_time" class="date"/>
+      <param name="size" class="size"/>
+      <param name="error" class="error"/>
+    </list>
+  </specification>
+
+=item template
+
+  <h1>Index of <span class="dirname">$DIR$</span></h1>
+  <table>
+    <tr>
+      <th>Name</th>
+      <th>Last Modified</th>
+      <th>Size</th>
+    </tr>
+    <tr class="files">
+      <td class="name"><a href="#" class="link">$FILE$</a></td>
+      <td class="date">$LAST_MODIFIED$</td>
+      <td class="size">$SIZE</td>
+      <td class="error">$ERROR$</td>
+    </tr>
+  </table>
+
+=back
 
 =item layout
 
 The layout to use (defaults to C<main>).
-
-=item token
-
-The token of your template to use (defaults to C<listing>) for the
-directory listing.
 
 =item autocreate_root
 
@@ -104,7 +137,6 @@ the basedir named with the username, so if you permit usernames with
 files, effectively cutting it out.
 
 =back
-
 
 =head1 Exported keywords
 
@@ -135,8 +167,6 @@ at least the template to use.
     Dropbox:
       basedir: 'dropbox-data'
       template: 'dropbox-listing'
-      token: index
-  
 
 The fourth argument is an hashref for the autoindex function. See
 L<Dancer::Plugin::AutoIndex> for details.
@@ -159,6 +189,14 @@ If the file can't be accessed, it calls the hook
 C<dropbox_file_access_denied> (bad names, or the previous hook removed
 the C<file> key. If the file can't be found, it calls the hook
 C<dropbox_file_not_found>.
+
+The file listing parameters is stored in the token C<file_listing>.
+Before sending it to the template, the hook
+C<dropbox_on_directory_view> is called, where the template tokens can
+be manipulated.
+
+
+
 
 =head2 dropbox_ajax_listing ( $user, $path )
 
@@ -272,13 +310,17 @@ sub dropbox_send_file {
         $details->{layout}   ||= plugin_setting->{layout} || "main";
 
         # add the listing to the template tokens
-        my $token = plugin_setting->{token}  || "listing";
-        $details->{template_tokens}->{$token} = $listing;
+        $details->{template_tokens}->{file_listing} = $listing;
+        # pass it to the hook for editing
+        execute_hook dropbox_on_directory_view => $details;
+
+        # last chance to set the template is past.
+        die "Missing template!" unless $details->{template};
     }
     else {
         $details->{status} = 404;
     }
-    return _finalize($details, _render_index($listing));
+    return _finalize($details);
 }
 
 sub _finalize {
@@ -650,6 +692,7 @@ sub _render_index {
 register_hook 'dropbox_find_file';
 register_hook 'dropbox_file_not_found';
 register_hook 'dropbox_file_access_denied';
+register_hook 'dropbox_on_directory_view';
 
 register_hook 'dropbox_on_upload_file_success';
 register_hook 'dropbox_on_upload_file_failure';

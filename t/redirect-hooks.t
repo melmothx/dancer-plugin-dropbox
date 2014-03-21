@@ -19,12 +19,13 @@ set template => 'simple';
 
 set log => 'debug';
 set logger => 'capture';
-set template => 'simple';
+set template => 'template_flute';
 
 set plugins => {
                 Dropbox => {
                             basedir => $basedir,
                             autocreate_root => 1,
+                            template => 'autoindex',
                            }
                };
 

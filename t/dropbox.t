@@ -15,9 +15,13 @@ use Dancer::Test;
 my $basedir = catdir(t => "dropbox-dir");
 my $username = 'marco@linuxia.de';
 
+set views => catdir(t => "views");
+set template => 'template_flute';
+
 set plugins => {
                 Dropbox => {
-                            basedir => $basedir
+                            basedir => $basedir,
+                            template => 'autoindex',
                            }
                };
 

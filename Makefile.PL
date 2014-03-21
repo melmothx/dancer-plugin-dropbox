@@ -16,6 +16,7 @@ WriteMakefile(
     },
     BUILD_REQUIRES => {
         'Test::More' => 0,
+        'Template::Flute' => 0,
     },
     PREREQ_PM => {
                   'Dancer' => 1.311,

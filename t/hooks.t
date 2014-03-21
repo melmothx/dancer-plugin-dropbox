@@ -18,13 +18,14 @@ my $basedir = catdir(t => "dropbox-hooks");
 set plugins => {
                 Dropbox => {
                             basedir => $basedir,
+                            template => 'autoindex',
                            }
                };
 
 set views => catdir(t => 'views');
 set log => 'debug';
 set logger => 'capture';
-set template => 'simple';
+set template => 'template_flute';
 
 get '/dropbox/*/' => sub {
     my ($user) = splat;
@@ -113,7 +114,7 @@ hook dropbox_file_not_found => sub {
 $res = dancer_response(GET => "/dropbox/$username/test.txt");
 
 response_status_is $res, 404, "hook modify request to something not found!";
-response_content_like $res, qr/My shiny template test\.txt/, "Template rendered";
+response_content_like $res, qr/My shiny template.*test\.txt/, "Template rendered";
 
 
 hook dropbox_find_file => sub {
@@ -155,7 +156,7 @@ response_status_is $res, 403,
 
 
 response_content_like $res,
-  qr/In denied template: Access denied by app, hook executed/,
+  qr/In denied template:.*Access denied by app, hook executed/,
   "denied template rendered";
 
 
