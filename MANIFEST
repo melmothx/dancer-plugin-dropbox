@@ -14,5 +14,11 @@ t/manifest.t
 t/pod-coverage.t
 t/pod.t
 t/redirect-hooks.t
-t/views/denied.tt
-t/views/not_found.tt
+t/views/autoindex.html
+t/views/autoindex.xml
+t/views/denied.html
+t/views/denied.xml
+t/views/generic.html
+t/views/generic.xml
+t/views/not_found.html
+t/views/not_found.xml

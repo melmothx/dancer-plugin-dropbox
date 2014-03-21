@@ -32,3 +32,4 @@
 
 ^t/dropbox-dir/
 ^t/dropbox-hooks/
+^t/redirections/

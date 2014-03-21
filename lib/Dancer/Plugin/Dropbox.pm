@@ -689,13 +689,13 @@ sub _render_index {
     return join("", @out);
 }
 
-register_hook 'dropbox_find_file';
-register_hook 'dropbox_file_not_found';
-register_hook 'dropbox_file_access_denied';
-register_hook 'dropbox_on_directory_view';
+register_hook 'dropbox_find_file'; # tested
+register_hook 'dropbox_file_not_found'; # tested 
+register_hook 'dropbox_file_access_denied'; # tested
+register_hook 'dropbox_on_directory_view'; # tested
 
-register_hook 'dropbox_on_upload_file_success';
-register_hook 'dropbox_on_upload_file_failure';
+register_hook 'dropbox_on_upload_file_success'; # tested
+register_hook 'dropbox_on_upload_file_failure'; # tested
 
 register_hook 'dropbox_on_delete_file_success';
 register_hook 'dropbox_on_delete_file_failure';

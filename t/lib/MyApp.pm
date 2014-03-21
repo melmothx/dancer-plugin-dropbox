@@ -18,7 +18,7 @@ get '/dropbox/*/**' => sub {
 
 sub manage_uploads {
     my ($user, $filepath) = splat;
-    if (my $uploaded = upload('upload_file')) {
+    if (my $uploaded = upload('upload')) {
         return dropbox_upload_file($user, $filepath, $uploaded);
     }
     elsif (my $dirname = param("newdirname")) {
